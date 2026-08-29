@@ -240,7 +240,7 @@ func display_status_bar() {
 	used_space := len(mode_status) + len(file_status) + len(cursor_status) + len(copy_status) + len(undo_status)
 	spaces := strings.Repeat(" ", COLS-used_space)
 	message := mode_status + file_status + copy_status + undo_status + spaces + cursor_status
-	print_message(0, ROWS, termbox.ColorBlack|termbox.AttrBold, termbox.ColorDefault, message) //Change this to black later
+	print_message(0, ROWS, termbox.ColorBlack|termbox.AttrBold, termbox.ColorBlack, message)
 }
 
 func print_message(col, row int, fg, bg termbox.Attribute, message string) {
