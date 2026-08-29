@@ -84,6 +84,65 @@ func scroll_text_buffer() {
 		offset_col = current_col - COLS + 1
 	}
 }
+
+func insert_rune(event termbox.Event) {
+	insert_rune := make([]rune, len(text_buffer[current_row])+1)
+
+	copy(insert_rune[:current_col], text_buffer[current_row][:current_col])
+
+	switch event.Key {
+	case termbox.KeySpace:
+		insert_rune[current_col] = rune(' ')
+	case termbox.KeyTab:
+		insert_rune[current_col] = rune(' ')
+	default:
+		insert_rune[current_col] = rune(event.Ch)
+	}
+	copy(insert_rune[current_col+1:], text_buffer[current_row][current_col:])
+	text_buffer[current_row] = insert_rune
+	current_col++
+}
+
+func delete_rune() {
+	if current_col > 0 {
+		current_col--
+		delete_line := make([]rune, len(text_buffer[current_row])-1)
+		copy(delete_line[:current_col], text_buffer[current_row][:current_col])
+		copy(delete_line[current_col:], text_buffer[current_row][current_col+1:])
+		text_buffer[current_row] = delete_line
+	} else if current_row > 0 {
+		append_line := make([]rune, len(text_buffer[current_row]))
+		copy(append_line, text_buffer[current_row][current_col:])
+		new_text_buffer := make([][]rune, len(text_buffer)-1)
+		copy(new_text_buffer[:current_row], text_buffer[:current_row])
+		copy(new_text_buffer[current_row:], text_buffer[current_row+1:])
+		text_buffer = new_text_buffer
+		current_row--
+		current_col = len(text_buffer[current_row])
+		insert_line := make([]rune, len(text_buffer[current_row])+len(append_line))
+		copy(insert_line[:len(text_buffer[current_row])], text_buffer[current_row])
+		copy(insert_line[len(text_buffer[current_row]):], append_line)
+		text_buffer[current_row] = insert_line
+	}
+}
+
+func insert_line() {
+	right_line := make([]rune, len(text_buffer[current_row][current_col:]))
+	copy(right_line, text_buffer[current_row][current_col:])
+
+	left_line := make([]rune, len(text_buffer[current_row][:current_col]))
+	copy(left_line, text_buffer[current_row][:current_col])
+
+	text_buffer[current_row] = left_line
+	current_row++
+	current_col = 0
+
+	new_text_buffer := make([][]rune, len(text_buffer)+1)
+	copy(new_text_buffer, text_buffer[:current_row])
+	new_text_buffer[current_row] = right_line
+	copy(new_text_buffer[current_row+1:], text_buffer[current_row:])
+	text_buffer = new_text_buffer
+}
 func display_status_bar() {
 	var mode_status string
 	var file_status string
@@ -139,12 +198,49 @@ func get_key() termbox.Event {
 func process_keypress() {
 	key_event := get_key()
 	if key_event.Key == termbox.KeyEsc {
-		termbox.Close()
-		os.Exit(0)
+		mode = 0
 	} else if key_event.Ch != 0 {
-		// handel chars454
+		if mode == 1 {
+			insert_rune(key_event)
+			modified = true
+		} else {
+			switch key_event.Ch {
+			case 'q':
+				termbox.Close()
+				os.Exit(0)
+			case 'e':
+				mode = 1
+			}
+		}
 	} else {
 		switch key_event.Key {
+		case termbox.KeyEnter:
+			if mode == 1 {
+				insert_line()
+				modified = true
+			}
+		case termbox.KeyBackspace:
+			if mode == 1 {
+				delete_rune()
+				modified = true
+			}
+		case termbox.KeyBackspace2:
+			if mode == 1 {
+				delete_rune()
+				modified = true
+			}
+		case termbox.KeyTab:
+			if mode == 1 {
+				for range 4 {
+					insert_rune(key_event)
+				}
+				modified = true
+			}
+		case termbox.KeySpace:
+			if mode == 1 {
+				insert_rune(key_event)
+				modified = true
+			}
 		case termbox.KeyHome:
 			current_col = 0
 		case termbox.KeyEnd:
