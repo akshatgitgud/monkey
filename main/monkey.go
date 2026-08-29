@@ -106,6 +106,51 @@ func scroll_text_buffer() {
 	}
 }
 
+func copy_line() {
+	copy_line := make([]rune, len(text_buffer[current_row]))
+	copy(copy_line, text_buffer[current_row])
+	copy_buffer = copy_line
+}
+func cut_line() {
+	copy_line()
+	if current_row >= len(text_buffer) || len(text_buffer) < 2 {
+		return
+	}
+	new_text_buffer := make([][]rune, len(text_buffer)-1)
+	copy(new_text_buffer[:current_row], text_buffer[:current_row])
+	copy(new_text_buffer[current_row:], text_buffer[current_row+1:])
+	text_buffer = new_text_buffer
+	if current_row > 0 {
+		current_row--
+		current_col = 0
+	}
+}
+
+func paste_line() {
+	if len(copy_buffer) == 0 {
+		current_row++
+		current_col = 0
+	}
+	new_text_buffer := make([][]rune, len(text_buffer)+1)
+	copy(new_text_buffer, text_buffer[:current_row])
+	new_text_buffer[current_row] = copy_buffer
+	copy(new_text_buffer[current_row+1:], text_buffer[current_row:])
+	text_buffer = new_text_buffer
+}
+
+func push_buffer() {
+	copy_undo_buffer := make([][]rune, len(text_buffer))
+	copy(copy_undo_buffer, text_buffer)
+	undo_buffer = copy_undo_buffer
+}
+
+func pull_buffer() {
+	if len(undo_buffer) == 0 {
+		return
+	}
+	text_buffer = undo_buffer
+}
+
 func insert_rune(event termbox.Event) {
 	insert_rune := make([]rune, len(text_buffer[current_row])+1)
 
@@ -195,7 +240,7 @@ func display_status_bar() {
 	used_space := len(mode_status) + len(file_status) + len(cursor_status) + len(copy_status) + len(undo_status)
 	spaces := strings.Repeat(" ", COLS-used_space)
 	message := mode_status + file_status + copy_status + undo_status + spaces + cursor_status
-	print_message(0, ROWS, termbox.ColorBlack|termbox.AttrBold, termbox.ColorWhite, message) //Change this to black later
+	print_message(0, ROWS, termbox.ColorBlack|termbox.AttrBold, termbox.ColorDefault, message) //Change this to black later
 }
 
 func print_message(col, row int, fg, bg termbox.Attribute, message string) {
@@ -233,6 +278,16 @@ func process_keypress() {
 				mode = 1
 			case 'w':
 				write_file(source_file)
+			case 'c':
+				copy_line()
+			case 'p':
+				paste_line()
+			case 'd':
+				cut_line()
+			case 's':
+				push_buffer()
+			case 'l':
+				pull_buffer()
 			}
 		}
 	} else {
