@@ -16,7 +16,6 @@ var ROWS, COLS int
 var offset_col, offset_row int
 var currentX, currentY int
 var current_row, current_col int
-
 var source_file string
 var text_buffer = [][]rune{}
 
@@ -49,6 +48,28 @@ func read_file(fileName string) {
 	if lineNumber == 0 {
 		text_buffer = append(text_buffer, []rune{})
 	}
+}
+
+func write_file(fileName string) {
+	file, err := os.Create(fileName)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer file.Close()
+	writer := bufio.NewWriter(file)
+	for row, line := range text_buffer {
+		new_line := "\n"
+		if row == len(text_buffer)-1 {
+			new_line = ""
+		}
+		write_line := string(line) + new_line
+		_, err = writer.WriteString(write_line)
+		if err != nil {
+			fmt.Println("Error: ", err)
+		}
+	}
+	writer.Flush()
+	modified = false
 }
 func display_text_buffer() {
 	var row, col int
@@ -210,6 +231,8 @@ func process_keypress() {
 				os.Exit(0)
 			case 'e':
 				mode = 1
+			case 'w':
+				write_file(source_file)
 			}
 		}
 	} else {
