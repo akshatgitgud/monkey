@@ -5,7 +5,6 @@ Monkey is a lightweight terminal-based text editor written in Go, built complete
 The project is focused on understanding how text editors work internally while learning Go, terminal programming, input handling, text rendering, and file manipulation.
 
 ## Keybinds
----
 ```txt
    ESC: enter the 'VIEW' mode
      e: enter the 'EDIT' mode
@@ -33,7 +32,7 @@ PgDown: scroll 1/4 of the screen downwards
 ## Build from source
 ```
 git clone git@github.com:akshatgitgud/monkey.git
-cd monkey
+cd monkey/main/
 go mod tidy
 go build -o monkey monkey.go
 ```
