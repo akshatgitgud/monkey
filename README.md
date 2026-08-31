@@ -37,7 +37,7 @@ make clean && make build && cd main
 
 Run the editor:
 ```
-./mmonkey
+./monkey
 ```
 Or open a file directly:
 ```
