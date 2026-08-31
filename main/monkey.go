@@ -25,6 +25,7 @@ var copy_buffer = []rune{}
 var modified bool
 
 func read_file(fileName string) {
+	text_buffer = [][]rune{} //start the text buffer clean
 	file, err := os.Open(fileName)
 	if err != nil {
 		source_file = fileName
@@ -38,13 +39,16 @@ func read_file(fileName string) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		text_buffer = append(text_buffer, []rune{})
-
-		for i := 0; i < len(line); i++ {
-			text_buffer[lineNumber] = append(text_buffer[lineNumber], rune(line[i]))
+		// fixes the UTF-8 issue
+		for _, ch := range line {
+			text_buffer[lineNumber] = append(text_buffer[lineNumber], ch)
 		}
 		lineNumber++
 	}
-	scanner.Err() // Particular Error detection while reading the file
+	// Particular Error detection while reading the file
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading file:", err)
+	}
 	if lineNumber == 0 {
 		text_buffer = append(text_buffer, []rune{})
 	}
@@ -53,41 +57,52 @@ func read_file(fileName string) {
 func write_file(fileName string) {
 	file, err := os.Create(fileName)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Error creating file:", err)
+		return
 	}
 	defer file.Close()
+
 	writer := bufio.NewWriter(file)
+
 	for row, line := range text_buffer {
 		new_line := "\n"
 		if row == len(text_buffer)-1 {
 			new_line = ""
 		}
+
 		write_line := string(line) + new_line
+
 		_, err = writer.WriteString(write_line)
 		if err != nil {
 			fmt.Println("Error: ", err)
+			return
 		}
 	}
-	writer.Flush()
+	if err := writer.Flush(); err != nil {
+		fmt.Println("Error flushing file:", err)
+		return
+	}
+
 	modified = false
 }
 func display_text_buffer() {
 	var row, col int
 	for row = 0; row < ROWS; row++ {
 		text_bufferRow := row + offset_row
+		if text_bufferRow >= len(text_buffer) {
+			termbox.SetCell(0, row, rune('*'), termbox.ColorBlue, termbox.ColorDefault)
+			continue
+		}
 		for col = 0; col < COLS; col++ {
 			text_bufferCol := col + offset_col
-			if text_bufferRow >= 0 && text_bufferRow < len(text_buffer) && text_bufferCol < len(text_buffer[text_bufferRow]) {
+			if text_bufferRow >= 0 && text_bufferCol < len(text_buffer[text_bufferRow]) {
 				if text_buffer[text_bufferRow][text_bufferCol] != '\t' {
 					termbox.SetChar(col, row, text_buffer[text_bufferRow][text_bufferCol])
 				} else {
 					termbox.SetCell(col, row, rune(' '), termbox.ColorDefault, termbox.ColorDefault)
 				}
-			} else if row+offset_row > len(text_buffer)-1 {
-				termbox.SetCell(0, row, rune('*'), termbox.ColorBlue, termbox.ColorDefault)
 			}
 		}
-		termbox.SetChar(col, row, '\n')
 	}
 }
 
@@ -107,6 +122,9 @@ func scroll_text_buffer() {
 }
 
 func copy_line() {
+	if current_row >= len(text_buffer) {
+		return
+	}
 	copy_line := make([]rune, len(text_buffer[current_row]))
 	copy(copy_line, text_buffer[current_row])
 	copy_buffer = copy_line
@@ -128,29 +146,54 @@ func cut_line() {
 
 func paste_line() {
 	if len(copy_buffer) == 0 {
-		current_row++
-		current_col = 0
+		return
 	}
+	current_row++
+	current_col = 0
+
+	pasted := make([]rune, len(copy_buffer))
+	copy(pasted, copy_buffer)
+
 	new_text_buffer := make([][]rune, len(text_buffer)+1)
 	copy(new_text_buffer, text_buffer[:current_row])
-	new_text_buffer[current_row] = copy_buffer
+	new_text_buffer[current_row] = pasted
 	copy(new_text_buffer[current_row+1:], text_buffer[current_row:])
 	text_buffer = new_text_buffer
 }
 
 func push_buffer() {
-	copy_undo_buffer := make([][]rune, len(text_buffer))
-	copy(copy_undo_buffer, text_buffer)
-	undo_buffer = copy_undo_buffer
+	undo_buffer = make([][]rune, len(text_buffer))
+	// fixes the case where modifying text buffer affects undo buffer
+	for i, line := range text_buffer {
+		undo_buffer[i] = make([]rune, len(line))
+		copy(undo_buffer[i], line)
+	}
 }
 
 func pull_buffer() {
 	if len(undo_buffer) == 0 {
 		return
 	}
-	text_buffer = undo_buffer
-}
 
+	text_buffer = make([][]rune, len(undo_buffer))
+
+	for i, line := range undo_buffer {
+		text_buffer[i] = make([]rune, len(line))
+		copy(text_buffer[i], line)
+	}
+
+	if current_row >= len(text_buffer) {
+		current_row = len(text_buffer) - 1
+	}
+	if current_row < 0 {
+		current_row = 0
+	}
+	if current_col > len(text_buffer[current_row]) {
+		current_col = len(text_buffer[current_row])
+	}
+
+	modified = true
+}
 func insert_rune(event termbox.Event) {
 	insert_rune := make([]rune, len(text_buffer[current_row])+1)
 
@@ -220,11 +263,7 @@ func display_status_bar() {
 	} else {
 		mode_status = "VIEW: "
 	}
-	filename_length := len(source_file)
-	if filename_length > 8 {
-		filename_length = 8
-	}
-	file_status = source_file[:filename_length] + " - " + strconv.Itoa(len(text_buffer)) + " lines"
+	file_status = source_file + " - " + strconv.Itoa(len(text_buffer)) + " lines"
 	if modified {
 		file_status += " modified"
 	} else {
@@ -237,9 +276,15 @@ func display_status_bar() {
 	if len(undo_buffer) > 0 {
 		undo_status = " [Undo]"
 	}
-	used_space := len(mode_status) + len(file_status) + len(cursor_status) + len(copy_status) + len(undo_status)
-	spaces := strings.Repeat(" ", COLS-used_space)
+	used_space := runewidth.StringWidth(mode_status + file_status + copy_status + undo_status + cursor_status)
+	spaces := ""
+	if COLS > used_space {
+		spaces = strings.Repeat(" ", COLS-used_space)
+	}
 	message := mode_status + file_status + copy_status + undo_status + spaces + cursor_status
+	if totalWidth := runewidth.StringWidth(message); totalWidth < COLS {
+		message += strings.Repeat(" ", COLS-totalWidth)
+	}
 	print_message(0, ROWS, termbox.ColorDefault|termbox.AttrReverse, termbox.ColorDefault, message)
 }
 
@@ -282,8 +327,10 @@ func process_keypress() {
 				copy_line()
 			case 'p':
 				paste_line()
+				modified = true
 			case 'd':
 				cut_line()
+				modified = true
 			case 's':
 				push_buffer()
 			case 'l':
@@ -324,12 +371,16 @@ func process_keypress() {
 		case termbox.KeyEnd:
 			current_col = len(text_buffer[current_row])
 		case termbox.KeyPgup:
-			if current_row-int(ROWS/4) > 0 {
+			if current_row-int(ROWS/4) >= 0 {
 				current_row -= int(ROWS / 4)
+			} else {
+				current_row = 0
 			}
 		case termbox.KeyPgdn:
-			if current_row+int(ROWS/4) < len(text_buffer)-1 {
+			if current_row+int(ROWS/4) < len(text_buffer) {
 				current_row += int(ROWS / 4)
+			} else if len(text_buffer) > 0 {
+				current_row = len(text_buffer) - 1
 			}
 
 		case termbox.KeyArrowUp:
@@ -378,8 +429,8 @@ func run_editor() {
 	for {
 		COLS, ROWS = termbox.Size()
 		ROWS--
-		if COLS < 78 {
-			COLS = 78
+		if ROWS < 1 {
+			ROWS = 1
 		}
 		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 		scroll_text_buffer()
