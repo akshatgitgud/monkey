@@ -34,7 +34,7 @@ PgDown: scroll 1/4 of the screen downwards
 git clone git@github.com:akshatgitgud/monkey.git
 cd monkey/main/
 go mod tidy
-go build -o monkey monkey.go
+go build -o monkey .
 ```
 
 Run the editor:
