@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/mattn/go-runewidth"
 	"github.com/nsf/termbox-go"
 )
@@ -128,6 +129,8 @@ func copy_line() {
 	copy_line := make([]rune, len(text_buffer[current_row]))
 	copy(copy_line, text_buffer[current_row])
 	copy_buffer = copy_line
+	// Copy to system clipboard
+	_=clipboard.WriteAll(string(copy_buffer))
 }
 func cut_line() {
 	copy_line()
@@ -145,20 +148,32 @@ func cut_line() {
 }
 
 func paste_line() {
-	if len(copy_buffer) == 0 {
+	clipText, err := clipboard.ReadAll()
+	var toPaste [][]rune
+
+	if err == nil && len(clipText) > 0 {
+		clipText = strings.ReplaceAll(clipText, "\r\n", "\n")
+		lines := strings.Split(clipText, "\n")
+		for _, l := range lines {
+			toPaste = append(toPaste, []rune(l))
+		}
+	} else if len(copy_buffer) > 0 {
+		pasted := make([]rune, len(copy_buffer))
+		copy(pasted, copy_buffer)
+		toPaste = [][]rune{pasted}
+	} else {
 		return
 	}
+
 	current_row++
 	current_col = 0
 
-	pasted := make([]rune, len(copy_buffer))
-	copy(pasted, copy_buffer)
-
-	new_text_buffer := make([][]rune, len(text_buffer)+1)
-	copy(new_text_buffer, text_buffer[:current_row])
-	new_text_buffer[current_row] = pasted
-	copy(new_text_buffer[current_row+1:], text_buffer[current_row:])
+	new_text_buffer := make([][]rune, 0, len(text_buffer)+len(toPaste))
+	new_text_buffer = append(new_text_buffer, text_buffer[:current_row]...)
+	new_text_buffer = append(new_text_buffer, toPaste...)
+	new_text_buffer = append(new_text_buffer, text_buffer[current_row:]...)
 	text_buffer = new_text_buffer
+	current_row += len(toPaste) - 1
 }
 
 func push_buffer() {
