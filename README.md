@@ -29,19 +29,15 @@ PgDown: scroll 1/4 of the screen downwards
 | Terminal UI     | Termbox             |
 | Unicode Support | go-runewidth        |
 | Build           | Bash + Go toolchain |
-## Build from source
+## Install from source
 ```
 git clone git@github.com:akshatgitgud/monkey.git
-make clean && make build && cd main
+cd monkey && make install
 ```
 
 Run the editor:
 ```
-./monkey
-```
-Or open a file directly:
-```
-./monkey filename.txt
+monkey filename.txt
 ```
 ---
 ## Requirements

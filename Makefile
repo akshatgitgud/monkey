@@ -7,7 +7,7 @@ BIN_PATH=/usr/local/bin/$(APP_NAME)
 all: fmt vet build
 
 build: tidy
-	cd $(DIR) && go build -ldflags "-s -w" -o $(APP_NAME) monkey.go
+	cd $(DIR) && go build -ldflags "-s -w" -o $(APP_NAME) .
 
 run: build
 	./$(DIR)/$(APP_NAME)
@@ -34,7 +34,7 @@ uninstall:
 	@echo "uninstalled."
 
 cross-build: tidy
-	@cd $(DIR) && GOOS=windows GOARCH=amd64 go build -o $(APP_NAME).exe monkey.go
-	@cd $(DIR) && GOOS=darwin GOARCH=arm64 go build -o $(APP_NAME)-mac monkey.go
-	@cd $(DIR) && GOOS=linux GOARCH=amd64 go build -o $(APP_NAME)-linux monkey.go
+	@cd $(DIR) && GOOS=windows GOARCH=amd64 go build -o $(APP_NAME).exe .
+	@cd $(DIR) && GOOS=darwin GOARCH=arm64 go build -o $(APP_NAME)-mac .
+	@cd $(DIR) && GOOS=linux GOARCH=amd64 go build -o $(APP_NAME)-linux .
 	@echo "cross-compilation complete."
