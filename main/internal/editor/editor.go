@@ -195,8 +195,30 @@ func (e *Editor) ProcessKeypress() bool {
 				e.cutLine()
 			case 's':
 				e.buf.PushSnapshot()
+			// case 'l':
+			// e.curRow, e.curCol = e.buf.PullSnapshot(e.curRow, e.curCol)
+			case 'j':
+				if e.curRow < e.buf.LineCount()-1 {
+					e.curRow++
+				}
+			case 'k':
+				if e.curRow > 0 {
+					e.curRow--
+				}
+			case 'h':
+				if e.curCol > 0 {
+					e.curCol--
+				} else if e.curRow > 0 {
+					e.curRow--
+					e.curCol = e.buf.LineLen(e.curRow)
+				}
 			case 'l':
-				e.curRow, e.curCol = e.buf.PullSnapshot(e.curRow, e.curCol)
+				if e.curCol < e.buf.LineLen(e.curRow) {
+					e.curCol++
+				} else if e.curRow < e.buf.LineCount()-1 {
+					e.curRow++
+					e.curCol = 0
+				}
 			}
 		}
 		return true
