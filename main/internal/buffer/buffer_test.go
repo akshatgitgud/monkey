@@ -65,21 +65,49 @@ func TestBufferInsertLineAndMerge(t *testing.T) {
 	}
 }
 
-func TestBufferUndoSnapshot(t *testing.T) {
+func TestBufferMultiLevelUndoRedo(t *testing.T) {
 	b := New("")
 	b.InsertRune(0, 0, 'A')
-	b.PushSnapshot()
 
+	// Checkpoint 1
+	b.PushSnapshot(0, 1)
 	b.InsertRune(0, 1, 'B')
-	if string(b.Lines[0]) != "AB" {
-		t.Fatalf("expected 'AB', got '%s'", string(b.Lines[0]))
+
+	// Checkpoint 2
+	b.PushSnapshot(0, 2)
+	b.InsertRune(0, 2, 'C')
+
+	if string(b.Lines[0]) != "ABC" {
+		t.Fatalf("expected 'ABC', got '%s'", string(b.Lines[0]))
 	}
 
-	row, col := b.PullSnapshot(0, 2)
-	if row != 0 || col != 1 {
-		t.Fatalf("expected cursor clamped to (0, 1), got (%d, %d)", row, col)
+	// Undo to Checkpoint 2 ('AB')
+	row, col, ok := b.Undo(0, 3)
+	if !ok || string(b.Lines[0]) != "AB" || row != 0 || col != 2 {
+		t.Fatalf("expected undo to 'AB' at (0, 2), got '%s' at (%d, %d)", string(b.Lines[0]), row, col)
 	}
-	if string(b.Lines[0]) != "A" {
-		t.Fatalf("expected 'A' after undo, got '%s'", string(b.Lines[0]))
+
+	// Undo to Checkpoint 1 ('A')
+	row, col, ok = b.Undo(row, col)
+	if !ok || string(b.Lines[0]) != "A" || row != 0 || col != 1 {
+		t.Fatalf("expected undo to 'A' at (0, 1), got '%s' at (%d, %d)", string(b.Lines[0]), row, col)
+	}
+
+	// No more undo
+	_, _, ok = b.Undo(row, col)
+	if ok {
+		t.Fatalf("expected undo to fail when stack is empty")
+	}
+
+	// Redo to Checkpoint 2 ('AB')
+	row, col, ok = b.Redo(row, col)
+	if !ok || string(b.Lines[0]) != "AB" || row != 0 || col != 2 {
+		t.Fatalf("expected redo to 'AB' at (0, 2), got '%s' at (%d, %d)", string(b.Lines[0]), row, col)
+	}
+
+	// Redo to 'ABC'
+	row, col, ok = b.Redo(row, col)
+	if !ok || string(b.Lines[0]) != "ABC" || row != 0 || col != 3 {
+		t.Fatalf("expected redo to 'ABC' at (0, 3), got '%s' at (%d, %d)", string(b.Lines[0]), row, col)
 	}
 }

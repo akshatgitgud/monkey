@@ -5,12 +5,20 @@ import (
 	"os"
 )
 
-// Buffer manages text lines, modifications, and snapshots.
+// Snapshot records a point-in-time state of the buffer and cursor position.
+type Snapshot struct {
+	Lines [][]rune
+	Row   int
+	Col   int
+}
+
+// Buffer manages text lines, modifications, and multi-level undo/redo history.
 type Buffer struct {
 	Lines      [][]rune
 	SourceFile string
 	Modified   bool
-	UndoBuffer [][]rune
+	UndoStack  []Snapshot
+	RedoStack  []Snapshot
 	CopyBuffer []rune
 }
 
@@ -18,7 +26,8 @@ type Buffer struct {
 func New(fileName string) *Buffer {
 	b := &Buffer{
 		Lines:      [][]rune{},
-		UndoBuffer: [][]rune{},
+		UndoStack:  []Snapshot{},
+		RedoStack:  []Snapshot{},
 		CopyBuffer: []rune{},
 	}
 
@@ -71,14 +80,8 @@ func (b *Buffer) WriteFile(fileName string) error {
 
 	writer := bufio.NewWriter(file)
 
-	for row, line := range b.Lines {
-		newLine := "\n"
-		if row == len(b.Lines)-1 {
-			newLine = ""
-		}
-
-		writeLine := string(line) + newLine
-		if _, err := writer.WriteString(writeLine); err != nil {
+	for _, line := range b.Lines {
+		if _, err := writer.WriteString(string(line) + "\n"); err != nil {
 			return err
 		}
 	}
@@ -256,37 +259,124 @@ func (b *Buffer) PasteLines(row int, lines [][]rune) (int, int) {
 	return insertAt + len(toInsert) - 1, 0
 }
 
-// PushSnapshot creates a deep copy of Lines into UndoBuffer.
-func (b *Buffer) PushSnapshot() {
-	b.UndoBuffer = make([][]rune, len(b.Lines))
-	for i, line := range b.Lines {
-		b.UndoBuffer[i] = make([]rune, len(line))
-		copy(b.UndoBuffer[i], line)
+func copyLines(lines [][]rune) [][]rune {
+	copied := make([][]rune, len(lines))
+	for i, l := range lines {
+		copied[i] = make([]rune, len(l))
+		copy(copied[i], l)
 	}
+	return copied
 }
 
-// PullSnapshot restores Lines from UndoBuffer and clamps cursor. Returns clamped (row, col).
-func (b *Buffer) PullSnapshot(curRow, curCol int) (int, int) {
-	if len(b.UndoBuffer) == 0 {
-		return curRow, curCol
+func linesEqual(a, b [][]rune) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if len(a[i]) != len(b[i]) {
+			return false
+		}
+		for j := range a[i] {
+			if a[i][j] != b[i][j] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// PushSnapshot creates a point-in-time snapshot with cursor position and pushes it to UndoStack.
+func (b *Buffer) PushSnapshot(curRow, curCol int) {
+	if len(b.UndoStack) > 0 && linesEqual(b.UndoStack[len(b.UndoStack)-1].Lines, b.Lines) {
+		return
+	}
+	if len(b.UndoStack) >= 200 {
+		b.UndoStack = b.UndoStack[1:]
+	}
+	b.UndoStack = append(b.UndoStack, Snapshot{
+		Lines: copyLines(b.Lines),
+		Row:   curRow,
+		Col:   curCol,
+	})
+	b.RedoStack = nil
+}
+
+// Undo restores the previous state from UndoStack, pushing current state to RedoStack.
+// Returns the restored (row, col) and true if an undo occurred.
+func (b *Buffer) Undo(curRow, curCol int) (int, int, bool) {
+	if len(b.UndoStack) == 0 {
+		return curRow, curCol, false
 	}
 
-	b.Lines = make([][]rune, len(b.UndoBuffer))
-	for i, line := range b.UndoBuffer {
-		b.Lines[i] = make([]rune, len(line))
-		copy(b.Lines[i], line)
-	}
+	lastIdx := len(b.UndoStack) - 1
+	snapshot := b.UndoStack[lastIdx]
+	b.UndoStack = b.UndoStack[:lastIdx]
 
-	if curRow >= len(b.Lines) {
-		curRow = len(b.Lines) - 1
-	}
-	if curRow < 0 {
-		curRow = 0
-	}
-	if curCol > len(b.Lines[curRow]) {
-		curCol = len(b.Lines[curRow])
-	}
+	b.RedoStack = append(b.RedoStack, Snapshot{
+		Lines: copyLines(b.Lines),
+		Row:   curRow,
+		Col:   curCol,
+	})
 
+	b.Lines = copyLines(snapshot.Lines)
 	b.Modified = true
-	return curRow, curCol
+
+	row := snapshot.Row
+	col := snapshot.Col
+	if row >= len(b.Lines) {
+		row = len(b.Lines) - 1
+	}
+	if row < 0 {
+		row = 0
+	}
+	if col > len(b.Lines[row]) {
+		col = len(b.Lines[row])
+	}
+
+	return row, col, true
+}
+
+// Redo restores the state from RedoStack, pushing current state to UndoStack.
+// Returns the restored (row, col) and true if a redo occurred.
+func (b *Buffer) Redo(curRow, curCol int) (int, int, bool) {
+	if len(b.RedoStack) == 0 {
+		return curRow, curCol, false
+	}
+
+	lastIdx := len(b.RedoStack) - 1
+	snapshot := b.RedoStack[lastIdx]
+	b.RedoStack = b.RedoStack[:lastIdx]
+
+	b.UndoStack = append(b.UndoStack, Snapshot{
+		Lines: copyLines(b.Lines),
+		Row:   curRow,
+		Col:   curCol,
+	})
+
+	b.Lines = copyLines(snapshot.Lines)
+	b.Modified = true
+
+	row := snapshot.Row
+	col := snapshot.Col
+	if row >= len(b.Lines) {
+		row = len(b.Lines) - 1
+	}
+	if row < 0 {
+		row = 0
+	}
+	if col > len(b.Lines[row]) {
+		col = len(b.Lines[row])
+	}
+
+	return row, col, true
+}
+
+// CanUndo returns true if an undo step is available.
+func (b *Buffer) CanUndo() bool {
+	return len(b.UndoStack) > 0
+}
+
+// CanRedo returns true if a redo step is available.
+func (b *Buffer) CanRedo() bool {
+	return len(b.RedoStack) > 0
 }

@@ -135,17 +135,22 @@ func (e *Editor) DisplayStatusBar() {
 	}
 
 	var undoStatus string
-	if len(e.buf.UndoBuffer) > 0 {
+	if e.buf.CanUndo() {
 		undoStatus = " [Undo]"
 	}
 
-	usedSpace := runewidth.StringWidth(modeStatus + fileStatus + copyStatus + undoStatus + cursorStatus)
+	var redoStatus string
+	if e.buf.CanRedo() {
+		redoStatus = " [Redo]"
+	}
+
+	usedSpace := runewidth.StringWidth(modeStatus + fileStatus + copyStatus + undoStatus + redoStatus + cursorStatus)
 	spaces := ""
 	if e.cols > usedSpace {
 		spaces = strings.Repeat(" ", e.cols-usedSpace)
 	}
 
-	message := modeStatus + fileStatus + copyStatus + undoStatus + spaces + cursorStatus
+	message := modeStatus + fileStatus + copyStatus + undoStatus + redoStatus + spaces + cursorStatus
 	if totalWidth := runewidth.StringWidth(message); totalWidth < e.cols {
 		message += strings.Repeat(" ", e.cols-totalWidth)
 	}
@@ -184,6 +189,7 @@ func (e *Editor) ProcessKeypress() bool {
 			case 'q':
 				return false
 			case 'e':
+				e.buf.PushSnapshot(e.curRow, e.curCol)
 				e.mode = ModeEdit
 			case 'w':
 				_ = e.buf.WriteFile(e.buf.SourceFile)
@@ -193,10 +199,10 @@ func (e *Editor) ProcessKeypress() bool {
 				e.pasteLine()
 			case 'd':
 				e.cutLine()
-			case 's':
-				e.buf.PushSnapshot()
-			// case 'l':
-			// e.curRow, e.curCol = e.buf.PullSnapshot(e.curRow, e.curCol)
+			case 'u':
+				e.curRow, e.curCol, _ = e.buf.Undo(e.curRow, e.curCol)
+			case 'U':
+				e.curRow, e.curCol, _ = e.buf.Redo(e.curRow, e.curCol)
 			case 'j':
 				if e.curRow < e.buf.LineCount()-1 {
 					e.curRow++
@@ -225,6 +231,10 @@ func (e *Editor) ProcessKeypress() bool {
 	}
 
 	switch event.Key {
+	case termbox.KeyCtrlR:
+		if e.mode == ModeView {
+			e.curRow, e.curCol, _ = e.buf.Redo(e.curRow, e.curCol)
+		}
 	case termbox.KeyEnter:
 		if e.mode == ModeEdit {
 			e.curRow, e.curCol = e.buf.InsertLine(e.curRow, e.curCol)
@@ -300,6 +310,7 @@ func (e *Editor) copyLine() {
 }
 
 func (e *Editor) cutLine() {
+	e.buf.PushSnapshot(e.curRow, e.curCol)
 	newRow, newCol, cutLine := e.buf.CutLine(e.curRow)
 	e.curRow = newRow
 	e.curCol = newCol
@@ -324,5 +335,6 @@ func (e *Editor) pasteLine() {
 		return
 	}
 
+	e.buf.PushSnapshot(e.curRow, e.curCol)
 	e.curRow, e.curCol = e.buf.PasteLines(e.curRow, toPaste)
 }
