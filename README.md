@@ -5,21 +5,32 @@ Monkey is a lightweight terminal-based text editor written in Go, built complete
 The project is focused on understanding how text editors work internally while learning Go, terminal programming, input handling, text rendering, and file manipulation.
 
 ## Keybinds
+
+### View Mode
 ```txt
-   ESC: enter the 'VIEW' mode
-     e: enter the 'EDIT' mode
-     q: quit from the text editor
-     w: write file to disk
-     d: cut current line
-     c: copy current line to copy buffer
-     p: paste line from copy buffer
-     s: push text buffer to undo buffer
-     l: pull text buffer from undo buffer
-Arrows: move cursor
-PgDown: scroll 1/4 of the screen downwards
-  PgUp: scroll 1/4 of the screen upwards
-  HOME: move cursor to the beginning of the current line
-   END: move cursor to the end of the current line
+       ESC: Enter VIEW mode
+         e: Enter EDIT mode
+         q: Quit editor
+         w: Save file to disk
+         d: Cut current line (copied to clipboard)
+         c: Copy current line to clipboard
+         p: Paste line from clipboard / copy buffer
+         u: Undo last change
+U /shift+r: Redo last undone change
+   h,j,k,l: Move cursor (Left, Down, Up, Right)
+    Arrows: Move cursor
+    PgDown: Scroll 1/4 screen downwards
+      PgUp: Scroll 1/4 screen upwards
+      HOME: Move cursor to beginning of current line
+       END: Move cursor to end of current line
+```
+
+### Edit Mode
+```txt
+       ESC: Return to VIEW mode
+ Backspace: Delete character / merge lines
+     Enter: Insert newline
+       Tab: Insert 4 spaces
 ```
 ---
 ## Tech Stack
