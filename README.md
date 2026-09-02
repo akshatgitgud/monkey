@@ -16,7 +16,7 @@ The project is focused on understanding how text editors work internally while l
          c: Copy current line to clipboard
          p: Paste line from clipboard / copy buffer
          u: Undo last change
-U /shift+r: Redo last undone change
+    U / ^r: Redo last undone change
    h,j,k,l: Move cursor (Left, Down, Up, Right)
     Arrows: Move cursor
     PgDown: Scroll 1/4 screen downwards
