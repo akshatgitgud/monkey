@@ -2,15 +2,18 @@ APP_NAME=monkey
 DIR=main
 BIN_PATH=/usr/local/bin/$(APP_NAME)
 
-.PHONY: all build run clean tidy fmt vet install uninstall cross-build
+.PHONY: all build run test clean tidy fmt vet install uninstall cross-build
 
-all: fmt vet build
+all: fmt vet test build
 
 build: tidy
 	cd $(DIR) && go build -ldflags "-s -w" -o $(APP_NAME) .
 
 run: build
 	./$(DIR)/$(APP_NAME)
+
+test: tidy
+	@cd $(DIR) && go test -v ./...
 
 fmt:
 	@cd $(DIR) && go fmt ./...
