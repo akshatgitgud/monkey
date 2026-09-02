@@ -1,7 +1,8 @@
 package editor
 
 import (
-	"strconv"
+	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/atotto/clipboard"
@@ -19,16 +20,24 @@ const (
 	ModeEdit Mode = 1
 )
 
+// Segment represents a colored text chunk in the status bar.
+type Segment struct {
+	Text string
+	Fg   termbox.Attribute
+	Bg   termbox.Attribute
+}
+
 // Editor manages the viewport, input dispatching, and screen rendering.
 type Editor struct {
-	buf       *buffer.Buffer
-	mode      Mode
-	rows      int
-	cols      int
-	curRow    int
-	curCol    int
-	offsetRow int
-	offsetCol int
+	buf           *buffer.Buffer
+	mode          Mode
+	rows          int
+	cols          int
+	curRow        int
+	curCol        int
+	offsetRow     int
+	offsetCol     int
+	statusMessage string
 }
 
 // New creates and initializes an Editor instance with the given file.
@@ -111,59 +120,136 @@ func (e *Editor) DisplayTextBuffer() {
 	}
 }
 
-// DisplayStatusBar renders the mode, filename, line count, copy/undo state, and cursor coordinate.
+// DisplayStatusBar renders a sleek, minimalist status bar with unified base styling.
 func (e *Editor) DisplayStatusBar() {
-	var modeStatus string
+	var modeText string
+	var modeFg termbox.Attribute
+
 	if e.mode == ModeEdit {
-		modeStatus = "EDIT: "
+		modeText = " EDIT "
+		modeFg = termbox.ColorGreen | termbox.AttrReverse | termbox.AttrBold
 	} else {
-		modeStatus = "VIEW: "
+		modeText = " VIEW "
+		modeFg = termbox.ColorCyan | termbox.AttrReverse | termbox.AttrBold
 	}
 
-	fileStatus := e.buf.SourceFile + " - " + strconv.Itoa(e.buf.LineCount()) + " lines"
+	barAttr := termbox.ColorDefault | termbox.AttrReverse
+	barBold := termbox.ColorDefault | termbox.AttrReverse | termbox.AttrBold
+
+	leftSegments := []Segment{
+		{Text: modeText, Fg: modeFg, Bg: termbox.ColorDefault},
+		{Text: " " + e.buf.SourceFile, Fg: barBold, Bg: termbox.ColorDefault},
+	}
+
 	if e.buf.Modified {
-		fileStatus += " modified"
+		leftSegments = append(leftSegments, Segment{
+			Text: " [+] ",
+			Fg:   termbox.ColorYellow | termbox.AttrReverse | termbox.AttrBold,
+			Bg:   termbox.ColorDefault,
+		})
 	} else {
-		fileStatus += " saved"
+		leftSegments = append(leftSegments, Segment{
+			Text: " ",
+			Fg:   barAttr,
+			Bg:   termbox.ColorDefault,
+		})
 	}
 
-	cursorStatus := " Row " + strconv.Itoa(e.curRow) + ", Col " + strconv.Itoa(e.curCol) + " "
+	rightText := fmt.Sprintf(" %s │ Ln %d, Col %d │ %s [%dL] ",
+		e.detectFileType(),
+		e.curRow+1,
+		e.curCol+1,
+		e.calculatePercentage(),
+		e.buf.LineCount(),
+	)
 
-	var copyStatus string
-	if len(e.buf.CopyBuffer) > 0 {
-		copyStatus = " [Copy]"
+	rightSegments := []Segment{
+		{Text: rightText, Fg: barAttr, Bg: termbox.ColorDefault},
 	}
 
-	var undoStatus string
-	if e.buf.CanUndo() {
-		undoStatus = " [Undo]"
+	leftWidth := 0
+	for _, seg := range leftSegments {
+		leftWidth += runewidth.StringWidth(seg.Text)
 	}
 
-	var redoStatus string
-	if e.buf.CanRedo() {
-		redoStatus = " [Redo]"
+	rightWidth := 0
+	for _, seg := range rightSegments {
+		rightWidth += runewidth.StringWidth(seg.Text)
 	}
 
-	usedSpace := runewidth.StringWidth(modeStatus + fileStatus + copyStatus + undoStatus + redoStatus + cursorStatus)
-	spaces := ""
-	if e.cols > usedSpace {
-		spaces = strings.Repeat(" ", e.cols-usedSpace)
+	// 1. Draw Left Segments
+	curCol := 0
+	for _, seg := range leftSegments {
+		if curCol < e.cols {
+			curCol = e.drawSegment(curCol, e.rows, seg)
+		}
 	}
 
-	message := modeStatus + fileStatus + copyStatus + undoStatus + redoStatus + spaces + cursorStatus
-	if totalWidth := runewidth.StringWidth(message); totalWidth < e.cols {
-		message += strings.Repeat(" ", e.cols-totalWidth)
+	// 2. Draw Center / Message area
+	rightStartCol := e.cols - rightWidth
+	if rightStartCol < curCol {
+		rightStartCol = curCol
 	}
 
-	e.PrintMessage(0, e.rows, termbox.ColorDefault|termbox.AttrReverse, termbox.ColorDefault, message)
+	msg := ""
+	if e.statusMessage != "" {
+		msg = " " + e.statusMessage + " "
+	}
+	msgWidth := runewidth.StringWidth(msg)
+
+	if curCol+msgWidth <= rightStartCol {
+		curCol = e.drawSegment(curCol, e.rows, Segment{Text: msg, Fg: barAttr, Bg: termbox.ColorDefault})
+	}
+
+	// Fill remaining gap with bar background
+	for col := curCol; col < rightStartCol; col++ {
+		termbox.SetCell(col, e.rows, ' ', barAttr, termbox.ColorDefault)
+	}
+
+	// 3. Draw Right Segments
+	if rightStartCol >= 0 {
+		rCol := rightStartCol
+		for _, seg := range rightSegments {
+			if rCol < e.cols {
+				rCol = e.drawSegment(rCol, e.rows, seg)
+			}
+		}
+	}
 }
 
-// PrintMessage writes a string with specified attributes at a given row and column.
-func (e *Editor) PrintMessage(col, row int, fg, bg termbox.Attribute, message string) {
-	for _, ch := range message {
-		termbox.SetCell(col, row, ch, fg, bg)
+// drawSegment writes a Segment at a given row and column, returning the next column index.
+func (e *Editor) drawSegment(col, row int, seg Segment) int {
+	for _, ch := range seg.Text {
+		termbox.SetCell(col, row, ch, seg.Fg, seg.Bg)
 		col += runewidth.RuneWidth(ch)
 	}
+	return col
+}
+
+// calculatePercentage returns TOP, BOT, or an approximate percentage into the buffer.
+func (e *Editor) calculatePercentage() string {
+	total := e.buf.LineCount()
+	if total <= 1 || e.curRow == 0 {
+		return "TOP"
+	}
+	if e.curRow >= total-1 {
+		return "BOT"
+	}
+	pct := int(float64(e.curRow) / float64(total-1) * 100)
+	return fmt.Sprintf("%2d%%", pct)
+}
+
+// detectFileType returns the file extension or basename without dot.
+func (e *Editor) detectFileType() string {
+	ext := filepath.Ext(e.buf.SourceFile)
+	if ext != "" {
+		return strings.ToLower(strings.TrimPrefix(ext, "."))
+	}
+	base := filepath.Base(e.buf.SourceFile)
+	if base != "" && base != "." {
+		return strings.ToLower(base)
+	}
+	return "txt"
 }
 
 // ProcessKeypress polls a key event and executes the appropriate command. Returns false on exit.
@@ -178,12 +264,14 @@ func (e *Editor) ProcessKeypress() bool {
 
 	if event.Key == termbox.KeyEsc {
 		e.mode = ModeView
+		e.statusMessage = ""
 		return true
 	}
 
 	if event.Ch != 0 {
 		if e.mode == ModeEdit {
 			e.curCol = e.buf.InsertRune(e.curRow, e.curCol, event.Ch)
+			e.statusMessage = ""
 		} else {
 			switch event.Ch {
 			case 'q':
@@ -191,8 +279,13 @@ func (e *Editor) ProcessKeypress() bool {
 			case 'e':
 				e.buf.PushSnapshot(e.curRow, e.curCol)
 				e.mode = ModeEdit
+				e.statusMessage = ""
 			case 'w':
-				_ = e.buf.WriteFile(e.buf.SourceFile)
+				if err := e.buf.WriteFile(e.buf.SourceFile); err != nil {
+					e.statusMessage = "Error: " + err.Error()
+				} else {
+					e.statusMessage = fmt.Sprintf("\"%s\" %dL written", e.buf.SourceFile, e.buf.LineCount())
+				}
 			case 'c':
 				e.copyLine()
 			case 'p':
@@ -200,9 +293,21 @@ func (e *Editor) ProcessKeypress() bool {
 			case 'd':
 				e.cutLine()
 			case 'u':
-				e.curRow, e.curCol, _ = e.buf.Undo(e.curRow, e.curCol)
+				newRow, newCol, ok := e.buf.Undo(e.curRow, e.curCol)
+				if ok {
+					e.curRow, e.curCol = newRow, newCol
+					e.statusMessage = "1 change undone"
+				} else {
+					e.statusMessage = "Already at oldest change"
+				}
 			case 'U':
-				e.curRow, e.curCol, _ = e.buf.Redo(e.curRow, e.curCol)
+				newRow, newCol, ok := e.buf.Redo(e.curRow, e.curCol)
+				if ok {
+					e.curRow, e.curCol = newRow, newCol
+					e.statusMessage = "1 change redone"
+				} else {
+					e.statusMessage = "Already at newest change"
+				}
 			case 'j':
 				if e.curRow < e.buf.LineCount()-1 {
 					e.curRow++
@@ -233,25 +338,35 @@ func (e *Editor) ProcessKeypress() bool {
 	switch event.Key {
 	case termbox.KeyCtrlR:
 		if e.mode == ModeView {
-			e.curRow, e.curCol, _ = e.buf.Redo(e.curRow, e.curCol)
+			newRow, newCol, ok := e.buf.Redo(e.curRow, e.curCol)
+			if ok {
+				e.curRow, e.curCol = newRow, newCol
+				e.statusMessage = "1 change redone"
+			} else {
+				e.statusMessage = "Already at newest change"
+			}
 		}
 	case termbox.KeyEnter:
 		if e.mode == ModeEdit {
 			e.curRow, e.curCol = e.buf.InsertLine(e.curRow, e.curCol)
+			e.statusMessage = ""
 		}
 	case termbox.KeyBackspace, termbox.KeyBackspace2:
 		if e.mode == ModeEdit {
 			e.curRow, e.curCol = e.buf.DeleteRune(e.curRow, e.curCol)
+			e.statusMessage = ""
 		}
 	case termbox.KeyTab:
 		if e.mode == ModeEdit {
 			for range 4 {
 				e.curCol = e.buf.InsertRune(e.curRow, e.curCol, ' ')
 			}
+			e.statusMessage = ""
 		}
 	case termbox.KeySpace:
 		if e.mode == ModeEdit {
 			e.curCol = e.buf.InsertRune(e.curRow, e.curCol, ' ')
+			e.statusMessage = ""
 		}
 	case termbox.KeyHome:
 		e.curCol = 0
@@ -306,6 +421,7 @@ func (e *Editor) copyLine() {
 	copied := e.buf.CopyLine(e.curRow)
 	if copied != nil {
 		_ = clipboard.WriteAll(string(copied))
+		e.statusMessage = "1 line yanked"
 	}
 }
 
@@ -316,6 +432,7 @@ func (e *Editor) cutLine() {
 	e.curCol = newCol
 	if cutLine != nil {
 		_ = clipboard.WriteAll(string(cutLine))
+		e.statusMessage = "1 line cut"
 	}
 }
 
@@ -337,4 +454,9 @@ func (e *Editor) pasteLine() {
 
 	e.buf.PushSnapshot(e.curRow, e.curCol)
 	e.curRow, e.curCol = e.buf.PasteLines(e.curRow, toPaste)
+	if len(toPaste) == 1 {
+		e.statusMessage = "1 line pasted"
+	} else {
+		e.statusMessage = fmt.Sprintf("%d lines pasted", len(toPaste))
+	}
 }
