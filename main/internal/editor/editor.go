@@ -3,6 +3,7 @@ package editor
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/atotto/clipboard"
@@ -69,7 +70,7 @@ func (e *Editor) Run() error {
 		e.Scroll()
 		e.DisplayTextBuffer()
 		e.DisplayStatusBar()
-		termbox.SetCursor(e.curCol-e.offsetCol, e.curRow-e.offsetRow)
+		termbox.SetCursor(e.gutterWidth()+e.curCol-e.offsetCol, e.curRow-e.offsetRow)
 
 		if err := termbox.Flush(); err != nil {
 			return err
@@ -83,6 +84,29 @@ func (e *Editor) Run() error {
 	return nil
 }
 
+// Returns number of digits needed for largest line number
+func (e *Editor) gutterDigits() int {
+	digits := len(strconv.Itoa(e.buf.LineCount()))
+	if digits < 2 {
+		digits = 2
+	}
+	return digits
+}
+
+// Total number of columns occupied by the gutter
+func (e *Editor) gutterWidth() int {
+	return e.gutterDigits() + 4
+}
+
+// usable width for text editing
+func (e *Editor) textCols() int {
+	cols := e.cols - e.gutterWidth()
+	if cols < 1 {
+		return 1
+	}
+	return cols
+}
+
 // Scroll adjusts offsetRow and offsetCol so the cursor is always visible in the viewport.
 func (e *Editor) Scroll() {
 	if e.curRow < e.offsetRow {
@@ -94,27 +118,57 @@ func (e *Editor) Scroll() {
 	if e.curRow >= e.offsetRow+e.rows {
 		e.offsetRow = e.curRow - e.rows + 1
 	}
-	if e.curCol >= e.offsetCol+e.cols {
-		e.offsetCol = e.curCol - e.cols + 1
+	// if e.curCol >= e.offsetCol+e.cols {
+	// e.offsetCol = e.curCol - e.cols + 1
+	// }
+	if textCols := e.textCols(); e.curCol >= e.offsetCol+textCols {
+		e.offsetCol = e.curCol - textCols + 1
 	}
 }
 
 // DisplayTextBuffer renders the visible slice of lines onto the termbox screen.
 func (e *Editor) DisplayTextBuffer() {
+	gw := e.gutterWidth()
+	digits := e.gutterDigits()
+	textCols := e.textCols()
+
 	for row := 0; row < e.rows; row++ {
 		textBufferRow := row + e.offsetRow
-		if textBufferRow >= e.buf.LineCount() {
-			termbox.SetCell(0, row, rune('*'), termbox.ColorBlue, termbox.ColorDefault)
-			continue
-		}
-		for col := 0; col < e.cols; col++ {
-			textBufferCol := col + e.offsetCol
-			if ch, ok := e.buf.GetRune(textBufferRow, textBufferCol); ok {
-				if ch != '\t' {
-					termbox.SetChar(col, row, ch)
-				} else {
-					termbox.SetCell(col, row, rune(' '), termbox.ColorDefault, termbox.ColorDefault)
+
+		if textBufferRow < e.buf.LineCount() {
+			isCurrentLine := textBufferRow == e.curRow
+			numFg := termbox.ColorDarkGray
+			sepFg := termbox.ColorDarkGray
+			if isCurrentLine {
+				numFg = termbox.ColorYellow | termbox.AttrBold
+			}
+
+			// Format: " %*d │ "
+			numStr := fmt.Sprintf(" %*d ", digits, textBufferRow+1)
+			col := 0
+			for _, ch := range numStr {
+				termbox.SetCell(col, row, ch, numFg, termbox.ColorDefault)
+				col++
+			}
+			termbox.SetCell(col, row, '│', sepFg, termbox.ColorDefault)
+			termbox.SetCell(col+1, row, ' ', termbox.ColorDefault, termbox.ColorDefault)
+
+			// Draw text content offset by gutterWidth
+			for col := 0; col < textCols; col++ {
+				textBufferCol := col + e.offsetCol
+				if ch, ok := e.buf.GetRune(textBufferRow, textBufferCol); ok {
+					if ch != '\t' {
+						termbox.SetChar(gw+col, row, ch)
+					} else {
+						termbox.SetCell(gw+col, row, rune(' '), termbox.ColorDefault, termbox.ColorDefault)
+					}
 				}
+			}
+		} else {
+			// EOF indicator
+			termbox.SetCell(0, row, '*', termbox.ColorBlue, termbox.ColorDefault)
+			for c := 1; c < gw; c++ {
+				termbox.SetCell(c, row, ' ', termbox.ColorDefault, termbox.ColorDefault)
 			}
 		}
 	}
