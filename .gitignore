@@ -2,3 +2,5 @@
 /main/monkey.exe
 /main/*.txt
 /main/text.md
+/main/internal/editor/editor_test.go
+/main/internal/buffer/buffer_test.go

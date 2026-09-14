@@ -22,7 +22,7 @@ type Buffer struct {
 	CopyBuffer []rune
 }
 
-// New creates a Buffer from a file, or creates an empty one if filename is empty or doesn't exist.
+// To create buffer from a file
 func New(fileName string) *Buffer {
 	b := &Buffer{
 		Lines:      [][]rune{},
@@ -30,7 +30,7 @@ func New(fileName string) *Buffer {
 		RedoStack:  []Snapshot{},
 		CopyBuffer: []rune{},
 	}
-
+	// Case when no file
 	if fileName == "" {
 		b.SourceFile = "out.txt"
 		b.Lines = append(b.Lines, []rune{})
@@ -45,6 +45,7 @@ func New(fileName string) *Buffer {
 // ReadFile loads text content from the specified file into the buffer.
 func (b *Buffer) ReadFile(fileName string) {
 	b.Lines = [][]rune{}
+
 	file, err := os.Open(fileName)
 	if err != nil {
 		b.SourceFile = fileName
@@ -52,25 +53,27 @@ func (b *Buffer) ReadFile(fileName string) {
 		return
 	}
 	defer file.Close()
+	// It makes sure file.close() happens only after ReadFile is completed
+
+	b.SourceFile = fileName
 
 	scanner := bufio.NewScanner(file)
-	lineNumber := 0
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		b.Lines = append(b.Lines, []rune{})
-		for _, ch := range line {
-			b.Lines[lineNumber] = append(b.Lines[lineNumber], ch)
-		}
-		lineNumber++
+		b.Lines = append(b.Lines, []rune(line))
+		// for _, ch := range line {
+		// b.Lines[lineNumber] = append(b.Lines[lineNumber], ch)
+		// }
+		// lineNumber++
 	}
 
-	if lineNumber == 0 {
+	if len(b.Lines) == 0 {
 		b.Lines = append(b.Lines, []rune{})
 	}
 }
 
-// WriteFile saves the buffer contents to the specified file.
+// for saving the stuff
 func (b *Buffer) WriteFile(fileName string) error {
 	file, err := os.Create(fileName)
 	if err != nil {
@@ -94,12 +97,10 @@ func (b *Buffer) WriteFile(fileName string) error {
 	return nil
 }
 
-// LineCount returns the number of lines in the buffer.
 func (b *Buffer) LineCount() int {
 	return len(b.Lines)
 }
 
-// LineLen returns the number of runes on the given row.
 func (b *Buffer) LineLen(row int) int {
 	if row < 0 || row >= len(b.Lines) {
 		return 0
@@ -140,7 +141,7 @@ func (b *Buffer) DeleteRune(row, col int) (int, int) {
 	if row < 0 || row >= len(b.Lines) {
 		return row, col
 	}
-
+	// To check if there's a character before the cursor
 	if col > 0 {
 		col--
 		delLine := make([]rune, len(b.Lines[row])-1)
@@ -150,7 +151,7 @@ func (b *Buffer) DeleteRune(row, col int) (int, int) {
 		b.Modified = true
 		return row, col
 	}
-
+// We are at a new line but there's a new line before
 	if row > 0 {
 		prevRow := row - 1
 		newCol := len(b.Lines[prevRow])
@@ -212,7 +213,7 @@ func (b *Buffer) CopyLine(row int) []rune {
 	return copied
 }
 
-// CutLine copies and deletes the line at row. Returns new (row, col) and copied line.
+
 func (b *Buffer) CutLine(row int) (int, int, []rune) {
 	copied := b.CopyLine(row)
 	if row < 0 || row >= len(b.Lines) || len(b.Lines) < 2 {
@@ -232,7 +233,6 @@ func (b *Buffer) CutLine(row int) (int, int, []rune) {
 	return newRow, 0, copied
 }
 
-// PasteLines inserts one or more lines after row. Returns new row and col.
 func (b *Buffer) PasteLines(row int, lines [][]rune) (int, int) {
 	if len(lines) == 0 {
 		return row, 0
