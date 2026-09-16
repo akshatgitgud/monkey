@@ -477,57 +477,37 @@ func (e *Editor) ProcessKeypress() bool {
 	return true
 }
 
-// moveDown moves cursor to the next line. If cursor is at the last element of the present line,
-// it moves to the last character of the next line rather than empty space.
+// moveDown moves cursor to the next line.
+// If there is a character at the current column on the next line, it goes to it.
+// If there isn't any character (the line is shorter), it goes to the end of the line.
 func (e *Editor) moveDown() {
 	if e.curRow >= e.buf.LineCount()-1 {
 		return
 	}
-	curLen := e.buf.LineLen(e.curRow)
-	isLast := curLen > 0 && e.curCol >= curLen-1
-
 	e.curRow++
-	nextLen := e.buf.LineLen(e.curRow)
+	targetLen := e.buf.LineLen(e.curRow)
 
-	if isLast {
-		if nextLen > 0 {
-			e.curCol = nextLen - 1
-		} else {
-			e.curCol = 0
-		}
-	} else if e.curCol > nextLen || (e.mode == ModeView && nextLen > 0 && e.curCol >= nextLen) {
-		if nextLen > 0 {
-			e.curCol = nextLen - 1
-		} else {
-			e.curCol = 0
-		}
+	if targetLen == 0 {
+		e.curCol = 0
+	} else if e.curCol >= targetLen {
+		e.curCol = targetLen - 1
 	}
 }
 
-// moveUp moves cursor to the previous line. If cursor is at the last element of the present line,
-// it moves to the last character of the previous line rather than empty space.
+// moveUp moves cursor to the previous line.
+// If there is a character at the current column on the previous line, it goes to it.
+// If there isn't any character (the line is shorter), it goes to the end of the line.
 func (e *Editor) moveUp() {
 	if e.curRow <= 0 {
 		return
 	}
-	curLen := e.buf.LineLen(e.curRow)
-	isLast := curLen > 0 && e.curCol >= curLen-1
-
 	e.curRow--
-	prevLen := e.buf.LineLen(e.curRow)
+	targetLen := e.buf.LineLen(e.curRow)
 
-	if isLast {
-		if prevLen > 0 {
-			e.curCol = prevLen - 1
-		} else {
-			e.curCol = 0
-		}
-	} else if e.curCol > prevLen || (e.mode == ModeView && prevLen > 0 && e.curCol >= prevLen) {
-		if prevLen > 0 {
-			e.curCol = prevLen - 1
-		} else {
-			e.curCol = 0
-		}
+	if targetLen == 0 {
+		e.curCol = 0
+	} else if e.curCol >= targetLen {
+		e.curCol = targetLen - 1
 	}
 }
 
