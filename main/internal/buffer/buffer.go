@@ -151,7 +151,7 @@ func (b *Buffer) DeleteRune(row, col int) (int, int) {
 		b.Modified = true
 		return row, col
 	}
-// We are at a new line but there's a new line before
+	// We are at a new line but there's a new line before
 	if row > 0 {
 		prevRow := row - 1
 		newCol := len(b.Lines[prevRow])
@@ -212,7 +212,6 @@ func (b *Buffer) CopyLine(row int) []rune {
 	b.CopyBuffer = copied
 	return copied
 }
-
 
 func (b *Buffer) CutLine(row int) (int, int, []rune) {
 	copied := b.CopyLine(row)

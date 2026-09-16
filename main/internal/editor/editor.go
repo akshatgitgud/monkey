@@ -84,7 +84,7 @@ func (e *Editor) Run() error {
 	return nil
 }
 
-// Returns number of digits needed for largest line number
+// Returns numver of digits needed for largest line number
 func (e *Editor) gutterDigits() int {
 	digits := len(strconv.Itoa(e.buf.LineCount()))
 	if digits < 2 {
@@ -363,19 +363,20 @@ func (e *Editor) ProcessKeypress() bool {
 					e.statusMessage = "Already at newest change"
 				}
 			case 'j':
-				if e.curRow < e.buf.LineCount()-1 {
-					e.curRow++
-				}
+				e.moveDown()
 			case 'k':
-				if e.curRow > 0 {
-					e.curRow--
-				}
+				e.moveUp()
 			case 'h':
 				if e.curCol > 0 {
 					e.curCol--
 				} else if e.curRow > 0 {
 					e.curRow--
-					e.curCol = e.buf.LineLen(e.curRow)
+					prevLen := e.buf.LineLen(e.curRow)
+					if prevLen > 0 {
+						e.curCol = prevLen - 1
+					} else {
+						e.curCol = 0
+					}
 				}
 			case 'l':
 				if e.curCol < e.buf.LineLen(e.curRow) {
@@ -425,7 +426,11 @@ func (e *Editor) ProcessKeypress() bool {
 	case termbox.KeyHome:
 		e.curCol = 0
 	case termbox.KeyEnd:
-		e.curCol = e.buf.LineLen(e.curRow)
+		if e.mode == ModeView && e.buf.LineLen(e.curRow) > 0 {
+			e.curCol = e.buf.LineLen(e.curRow) - 1
+		} else {
+			e.curCol = e.buf.LineLen(e.curRow)
+		}
 	case termbox.KeyPgup:
 		step := e.rows / 4
 		if e.curRow-step >= 0 {
@@ -441,19 +446,20 @@ func (e *Editor) ProcessKeypress() bool {
 			e.curRow = e.buf.LineCount() - 1
 		}
 	case termbox.KeyArrowUp:
-		if e.curRow > 0 {
-			e.curRow--
-		}
+		e.moveUp()
 	case termbox.KeyArrowDown:
-		if e.curRow < e.buf.LineCount()-1 {
-			e.curRow++
-		}
+		e.moveDown()
 	case termbox.KeyArrowLeft:
 		if e.curCol > 0 {
 			e.curCol--
 		} else if e.curRow > 0 {
 			e.curRow--
-			e.curCol = e.buf.LineLen(e.curRow)
+			prevLen := e.buf.LineLen(e.curRow)
+			if e.mode == ModeView && prevLen > 0 {
+				e.curCol = prevLen - 1
+			} else {
+				e.curCol = prevLen
+			}
 		}
 	case termbox.KeyArrowRight:
 		if e.curCol < e.buf.LineLen(e.curRow) {
@@ -469,6 +475,60 @@ func (e *Editor) ProcessKeypress() bool {
 	}
 
 	return true
+}
+
+// moveDown moves cursor to the next line. If cursor is at the last element of the present line,
+// it moves to the last character of the next line rather than empty space.
+func (e *Editor) moveDown() {
+	if e.curRow >= e.buf.LineCount()-1 {
+		return
+	}
+	curLen := e.buf.LineLen(e.curRow)
+	isLast := curLen > 0 && e.curCol >= curLen-1
+
+	e.curRow++
+	nextLen := e.buf.LineLen(e.curRow)
+
+	if isLast {
+		if nextLen > 0 {
+			e.curCol = nextLen - 1
+		} else {
+			e.curCol = 0
+		}
+	} else if e.curCol > nextLen || (e.mode == ModeView && nextLen > 0 && e.curCol >= nextLen) {
+		if nextLen > 0 {
+			e.curCol = nextLen - 1
+		} else {
+			e.curCol = 0
+		}
+	}
+}
+
+// moveUp moves cursor to the previous line. If cursor is at the last element of the present line,
+// it moves to the last character of the previous line rather than empty space.
+func (e *Editor) moveUp() {
+	if e.curRow <= 0 {
+		return
+	}
+	curLen := e.buf.LineLen(e.curRow)
+	isLast := curLen > 0 && e.curCol >= curLen-1
+
+	e.curRow--
+	prevLen := e.buf.LineLen(e.curRow)
+
+	if isLast {
+		if prevLen > 0 {
+			e.curCol = prevLen - 1
+		} else {
+			e.curCol = 0
+		}
+	} else if e.curCol > prevLen || (e.mode == ModeView && prevLen > 0 && e.curCol >= prevLen) {
+		if prevLen > 0 {
+			e.curCol = prevLen - 1
+		} else {
+			e.curCol = 0
+		}
+	}
 }
 
 func (e *Editor) copyLine() {
